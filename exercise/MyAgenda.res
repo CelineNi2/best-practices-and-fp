@@ -9,36 +9,47 @@ module Event = {
 }
 
 
-let calculateAffinity = (event) => {
-  //function to calculate the affinity to an event
-}
-let selectBestEvents = (possibleEvents) => {
-  //returns the best event for each day using the array of the possibleEvents
+
+let calculateAffinity = (event: API.Event.t) => {
+  //function to calculate the affinity toward an event
+  let affinity = switch event {
+    | {kind: "concert", artists} =>
+      Some(API.Affinity.concert(~artists=artists, ~venue=event.venue, ~weather=API.Weather.getForecast(event.location, event.startDate)))
+    | {kind: "movie screening"} =>
+      Some(API.Affinity.movie(API.Movie.getInfo(~title=event.name)))
+    | {kind: "play", director, actors} =>
+      Some(API.Affinity.play(~playwright=API.Play.getInfo(~title=event.name).playwright, ~director=director, ~actors=actors))
+    | {kind: "student party", artists, affiliatedUniversitiy} =>
+      Some(API.Affinity.studentParty(~artists=artists, ~venue=event.venue, ~weather=API.Weather.getForecast(event.location, event.startDate), ~affiliatedUniversity=affiliatedUniversitiy))
+    | _ => 
+      None
+  }
+  affinity;
 }
 
 let oneRecommendationEveryDay = (~maxDistanceInKm, ~maxPrice) => {
-  let events = API.Event.nextEvents();      //this element is of option<API.Event.t> type, because of the option type, it doesn't work as intended
-  let currentLocation = API.Location.getCurrentLocation();
-  let possibleEvents = [];
-  let length = size(events)   //this line doesn't work as intended, the goal was to find out the size of the array
+  let events = API.Event.nextEvents()
+  let currentLocation = API.Location.getCurrentLocation()
+    
+  let possibleEvents = Belt.Array.keepMap(events, event => {
+    let distance = API.Location.distanceInKm(currentLocation, event.location)
 
-  for i in 0 to length {
-    let event = events[i];   
-    let distance = API.Location.distanceInKm(currentLocation, event.location);
+    if distance<maxDistanceInKm && event.price<maxPrice {
+      let affinity = calculateAffinity(event)
 
-    if distance<maxDistanceInKm && event.price<maxPrice{
-      let e = {
-          "name": event.name,
-          "startDate": event.startDate,
-          "venue": event.venue,
-          "price": event.price,
-          "affinity": calculateAffinity(event)
-      }
-      possibleEvents.add(e);    //this doesn't work either, the goal was to add the events that matches the requirements in the possibleEvent array
-    }
-  }
+      let e: option<Event.t> = switch affinity{
+        | Some(affinity) => Some({
+          Event.name: event.name,
+          startDate: event.startDate,
+          venue: event.venue,
+          price: event.price,
+          affinity: affinity})
+        | None =>
+          None
+        }
+        e
+    } else{None}
+  })
 
-  let bestEvents = selectBestEvents(possibleEvents);
-
-  bestEvents;
+  possibleEvents
 }
